@@ -7,14 +7,14 @@ Goal: build up from a tiny ECS deployment to a production-shaped service, learni
 - [x] Confirm AWS CLI access works with the intended account and region.
 - [x] Install/confirm Terraform locally.
 - [x] Pick one AWS region for the project.
-- [ ] Learn the ECS building blocks:
-  - [ ] Cluster
-  - [ ] Task definition
-  - [ ] Service
-  - [ ] Container
-  - [ ] Fargate
-  - [ ] IAM roles
-  - [ ] CloudWatch logs
+- [x] Learn the ECS building blocks:
+  - [x] Cluster
+  - [x] Task definition
+  - [x] Service
+  - [x] Container
+  - [x] Fargate
+  - [x] IAM roles
+  - [x] CloudWatch logs
 
 ## Phase 1: Minimal Terraform Project
 
@@ -22,8 +22,8 @@ Goal: build up from a tiny ECS deployment to a production-shaped service, learni
 - [x] Configure the AWS provider.
 - [ ] Add variables for project name and region.
 - [ ] Add common tags.
-- [ ] Run `terraform init`.
-- [ ] Run `terraform plan`.
+- [x] Run `terraform init`.
+- [x] Run `terraform plan`.
 
 ## Phase 2: Networking Foundation
 
@@ -36,36 +36,36 @@ Goal: build up from a tiny ECS deployment to a production-shaped service, learni
 
 ## Phase 3: First ECS Cluster
 
-- [ ] Create an ECS cluster.
+- [x] Create an ECS cluster.
 - [ ] Learn the difference between ECS cluster and running containers.
-- [ ] Create a CloudWatch log group.
+- [x] Create a CloudWatch log group.
 
 ## Phase 4: Run One Container on Fargate
 
-- [ ] Create ECS task execution IAM role.
-- [ ] Create an ECS task definition.
-- [ ] Use a simple public container image first, such as `nginx`.
-- [ ] Configure container port mappings.
-- [ ] Configure container logs.
-- [ ] Create a security group for the task.
-- [ ] Run the task through an ECS service.
+- [x] Create ECS task execution IAM role.
+- [x] Create an ECS task definition.
+- [x] Use a simple public container image first, such as `nginx`.
+- [x] Configure container port mappings.
+- [x] Configure container logs.
+- [x] Create a security group for the task.
+- [x] Run the task through an ECS service.
 
 ## Phase 5: Make It Reachable
 
-- [ ] Create an Application Load Balancer.
-- [ ] Create a target group.
-- [ ] Create an ALB listener.
-- [ ] Connect the ECS service to the target group.
-- [ ] Test the app in the browser.
-- [ ] Understand health checks.
+- [x] Create an Application Load Balancer.
+- [x] Create a target group.
+- [x] Create an ALB listener.
+- [x] Connect the ECS service to the target group.
+- [x] Test the app in the browser.
+- [x] Understand health checks.
 
 ## Phase 6: Replace Nginx with Our Own App
 
-- [ ] Add a tiny app locally.
-- [ ] Add a Dockerfile.
-- [ ] Build the Docker image.
-- [ ] Create an ECR repository.
-- [ ] Push the image to ECR.
+- [x] Add a tiny app locally.
+- [x] Add a Dockerfile.
+- [x] Build the Docker image.
+- [x] Create an ECR repository.
+- [x] Push the image to ECR.
 - [ ] Update ECS task definition to use the ECR image.
 - [ ] Redeploy and test.
 
@@ -74,7 +74,7 @@ Goal: build up from a tiny ECS deployment to a production-shaped service, learni
 - [ ] Add Terraform outputs for useful URLs and resource names.
 - [ ] Learn how ECS deployments roll out.
 - [ ] Update container image version safely.
-- [ ] Add CPU and memory settings intentionally.
+- [x] Add CPU and memory settings intentionally.
 - [ ] Review IAM permissions.
 - [ ] Add autoscaling basics.
 
