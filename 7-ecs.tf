@@ -38,8 +38,8 @@ resource "aws_iam_role_policy_attachment" "ecs_task_execution" {
 }
 
 
-resource "aws_ecs_task_definition" "nginx" {
-  family                   = "${local.ecs_name}-nginx"
+resource "aws_ecs_task_definition" "app" {
+  family                   = "${local.ecs_name}-${var.api_name}"
   requires_compatibilities = ["FARGATE"]
   network_mode             = "awsvpc"
   cpu                      = 256
@@ -48,14 +48,14 @@ resource "aws_ecs_task_definition" "nginx" {
 
   container_definitions = jsonencode([
     {
-      name      = "nginx"
-      image     = "nginx:latest"
+      name      = var.api_name
+      image     = local.api_image
       essential = true
 
       portMappings = [
         {
-          containerPort = 80
-          hostPort      = 80
+          containerPort = var.api_port
+          hostPort      = var.api_port
           protocol      = "tcp"
         }
       ]
@@ -65,7 +65,7 @@ resource "aws_ecs_task_definition" "nginx" {
         options = {
           awslogs-group         = aws_cloudwatch_log_group.ecs.name
           awslogs-region        = local.region
-          awslogs-stream-prefix = "nginx"
+          awslogs-stream-prefix = var.api_name
         }
       }
     }
@@ -73,7 +73,7 @@ resource "aws_ecs_task_definition" "nginx" {
   ])
 
   tags = {
-    Name = "${local.ecs_name}-nginx-task"
+    Name = "${local.ecs_name}-${var.api_name}-task"
   }
 
 }
@@ -93,8 +93,8 @@ resource "aws_security_group" "ecs_tasks_sg" {
 
   ingress {
     description     = "Allow HTTP from ALB"
-    from_port       = 80
-    to_port         = 80
+    from_port       = var.api_port
+    to_port         = var.api_port
     protocol        = "tcp"
     security_groups = [aws_security_group.alb.id]
   }
@@ -104,10 +104,10 @@ resource "aws_security_group" "ecs_tasks_sg" {
   }
 }
 
-resource "aws_ecs_service" "nginx" {
+resource "aws_ecs_service" "app" {
   name            = "${local.ecs_name}-nginx"
   cluster         = aws_ecs_cluster.main.id
-  task_definition = aws_ecs_task_definition.nginx.arn
+  task_definition = aws_ecs_task_definition.app.arn
   desired_count   = 1
   launch_type     = "FARGATE"
 
@@ -118,9 +118,9 @@ resource "aws_ecs_service" "nginx" {
   }
 
   load_balancer {
-    target_group_arn = aws_lb_target_group.nginx.arn
-    container_name   = "nginx"
-    container_port   = 80
+    target_group_arn = aws_lb_target_group.app.arn
+    container_name   = var.api_name
+    container_port   = var.api_port
   }
 }
 
@@ -169,7 +169,7 @@ resource "aws_lb" "main" {
 }
 
 
-resource "aws_lb_target_group" "nginx" {
+resource "aws_lb_target_group" "app" {
   name        = "${local.ecs_name}-nginx-tg"
   port        = 80
   protocol    = "HTTP"
@@ -177,7 +177,7 @@ resource "aws_lb_target_group" "nginx" {
   target_type = "ip"
 
   health_check {
-    path                = "/"
+    path                = var.api_health_check_path
     protocol            = "HTTP"
     matcher             = "200-399"
     interval            = 30
@@ -199,7 +199,6 @@ resource "aws_lb_listener" "http" {
 
   default_action {
     type             = "forward"
-    target_group_arn = aws_lb_target_group.nginx.arn
+    target_group_arn = aws_lb_target_group.app.arn
   }
 }
-
