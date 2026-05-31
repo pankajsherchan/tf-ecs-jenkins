@@ -1,0 +1,19 @@
+{
+  "explorer.excludeGitIgnore": true,
+  "files.exclude": {
+    "**/.terraform": true,
+    "**/.venv": true,
+    "**/__pycache__": true,
+    "**/*.pyc": true,
+    "**/*.tfstate": true,
+    "**/*.tfstate.*": true
+  },
+  "search.exclude": {
+    "**/.terraform": true,
+    "**/.venv": true,
+    "**/__pycache__": true,
+    "**/*.pyc": true,
+    "**/*.tfstate": true,
+    "**/*.tfstate.*": true
+  }
+}
