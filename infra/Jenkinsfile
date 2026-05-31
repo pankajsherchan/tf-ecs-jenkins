@@ -1,0 +1,101 @@
+pipeline {
+  agent any
+
+  options {
+    disableConcurrentBuilds()
+    timestamps()
+  }
+
+  parameters {
+    booleanParam(
+      name: 'APPLY',
+      defaultValue: false,
+      description: 'Apply the Terraform plan after review.'
+    )
+    string(
+      name: 'API_NAME',
+      defaultValue: 'fastapi',
+      description: 'App container name to keep in the ECS service while changing infrastructure.'
+    )
+    string(
+      name: 'API_PORT',
+      defaultValue: '8000',
+      description: 'App container port to keep in the ECS service while changing infrastructure.'
+    )
+    string(
+      name: 'API_HEALTH_CHECK_PATH',
+      defaultValue: '/health',
+      description: 'Target group health check path to keep while changing infrastructure.'
+    )
+    string(
+      name: 'API_IMAGE_TAG',
+      defaultValue: 'latest',
+      description: 'Image tag to keep in the ECS task definition while changing infrastructure.'
+    )
+  }
+
+  environment {
+    AWS_REGION = 'us-east-1'
+    TF_IN_AUTOMATION = 'true'
+    PLAN_FILE = 'infra.tfplan'
+  }
+
+  stages {
+    stage('Checkout') {
+      steps {
+        checkout scm
+      }
+    }
+
+    stage('Resolve Layout') {
+      steps {
+        script {
+          env.TERRAFORM_DIR = fileExists('infra/1-providers.tf') ? 'infra' : '.'
+        }
+        sh 'echo "Terraform directory: ${TERRAFORM_DIR}"'
+      }
+    }
+
+    stage('Terraform Init') {
+      steps {
+        dir(env.TERRAFORM_DIR) {
+          sh 'terraform init -input=false'
+        }
+      }
+    }
+
+    stage('Terraform Check') {
+      steps {
+        dir(env.TERRAFORM_DIR) {
+          sh 'terraform fmt -check -recursive'
+          sh 'terraform validate'
+        }
+      }
+    }
+
+    stage('Terraform Plan') {
+      steps {
+        dir(env.TERRAFORM_DIR) {
+          sh '''
+            terraform plan -input=false -out="${PLAN_FILE}" \
+              -var="api_name=${API_NAME}" \
+              -var="api_port=${API_PORT}" \
+              -var="api_health_check_path=${API_HEALTH_CHECK_PATH}" \
+              -var="api_image_tag=${API_IMAGE_TAG}"
+          '''
+        }
+      }
+    }
+
+    stage('Terraform Apply') {
+      when {
+        expression { return params.APPLY }
+      }
+      steps {
+        dir(env.TERRAFORM_DIR) {
+          sh 'terraform apply -input=false -auto-approve "${PLAN_FILE}"'
+        }
+      }
+    }
+  }
+}
