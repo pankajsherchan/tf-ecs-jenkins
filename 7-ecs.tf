@@ -91,6 +91,14 @@ resource "aws_security_group" "ecs_tasks_sg" {
     cidr_blocks = ["0.0.0.0/0"]
   }
 
+  ingress {
+    description     = "Allow HTTP from ALB"
+    from_port       = 80
+    to_port         = 80
+    protocol        = "tcp"
+    security_groups = [aws_security_group.alb.id]
+  }
+
   tags = {
     Name = "${local.ecs_name}-ecs-tasks"
   }
@@ -104,10 +112,54 @@ resource "aws_ecs_service" "nginx" {
   launch_type     = "FARGATE"
 
   network_configuration {
-    subnets          = [aws_subnet.private_us_east_1a.id, aws_route_table_association.private_us_east_1b.id]
+    subnets          = [aws_subnet.private_us_east_1a.id, aws_subnet.private_us_east_1b.id]
     security_groups  = [aws_security_group.ecs_tasks_sg.id]
     assign_public_ip = false
   }
 
 
+}
+
+resource "aws_security_group" "alb" {
+  name        = "${local.ecs_name}-alb"
+  description = "Security group for the application load balancer"
+  vpc_id      = aws_vpc.main.id
+
+  ingress {
+    description = "Allow HTTP from the internet"
+    from_port   = 80
+    to_port     = 80
+    protocol    = "tcp"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+
+  egress {
+    description = "Allow outbound traffic"
+    from_port   = 0
+    to_port     = 0
+    protocol    = "-1"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+
+  tags = {
+    Name = "${local.ecs_name}-alb"
+  }
+}
+
+resource "aws_lb" "main" {
+  name               = "${local.ecs_name}-alb"
+  load_balancer_type = "application"
+  internal           = false
+
+
+  subnets = [
+    aws_subnet.public_us_east_1a.id,
+    aws_subnet.public_us_east_1b.id
+  ]
+
+  security_groups = [aws_security_group.alb.id]
+
+  tags = {
+    Name = "${local.ecs_name}-alb"
+  }
 }
