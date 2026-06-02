@@ -47,6 +47,27 @@ pipeline {
       }
     }
 
+    stage('Verify AWS') {
+      steps {
+        withCredentials([
+          [$class: 'AmazonWebServicesCredentialsBinding',
+           credentialsId: 'aws-dev-credential',
+           accessKeyVariable: 'AWS_ACCESS_KEY_ID',
+           secretKeyVariable: 'AWS_SECRET_ACCESS_KEY']
+        ]) {
+          sh '''
+            set +x
+            aws --version
+            terraform version
+
+            env | grep '^AWS_' | sed 's/=.*/=***MASKED***/'
+
+            aws sts get-caller-identity
+          '''
+        }
+      }
+    }
+
     stage('Resolve Layout') {
       steps {
         script {
@@ -76,13 +97,19 @@ pipeline {
     stage('Terraform Plan') {
       steps {
         dir(env.TERRAFORM_DIR) {
-          sh '''
-            terraform plan -input=false -out="${PLAN_FILE}" \
-              -var="api_name=${API_NAME}" \
-              -var="api_port=${API_PORT}" \
-              -var="api_health_check_path=${API_HEALTH_CHECK_PATH}" \
-              -var="api_image_tag=${API_IMAGE_TAG}"
-          '''
+          withCredentials([[$class: 'AmazonWebServicesCredentialsBinding',
+            credentialsId: 'aws-dev-credential',
+            accessKeyVariable: 'AWS_ACCESS_KEY_ID',
+            secretKeyVariable: 'AWS_SECRET_ACCESS_KEY'
+          ]]) {
+            sh '''
+              terraform plan -input=false -out="${PLAN_FILE}" \
+                -var="api_name=${API_NAME}" \
+                -var="api_port=${API_PORT}" \
+                -var="api_health_check_path=${API_HEALTH_CHECK_PATH}" \
+                -var="api_image_tag=${API_IMAGE_TAG}"
+            '''
+          }
         }
       }
     }
@@ -93,7 +120,13 @@ pipeline {
       }
       steps {
         dir(env.TERRAFORM_DIR) {
-          sh 'terraform apply -input=false -auto-approve "${PLAN_FILE}"'
+          withCredentials([[$class: 'AmazonWebServicesCredentialsBinding',
+            credentialsId: 'aws-dev-credential',
+            accessKeyVariable: 'AWS_ACCESS_KEY_ID',
+            secretKeyVariable: 'AWS_SECRET_ACCESS_KEY'
+          ]]) {
+            sh 'terraform apply -input=false -auto-approve "${PLAN_FILE}"'
+          }
         }
       }
     }
