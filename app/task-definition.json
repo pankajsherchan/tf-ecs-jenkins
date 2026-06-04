@@ -5,6 +5,10 @@
   "requiresCompatibilities": [
     "FARGATE"
   ],
+  "runtimePlatform": {
+    "cpuArchitecture": "${TASK_CPU_ARCHITECTURE}",
+    "operatingSystemFamily": "${TASK_OPERATING_SYSTEM_FAMILY}"
+  },
   "cpu": "256",
   "memory": "512",
   "containerDefinitions": [

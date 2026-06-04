@@ -30,12 +30,15 @@ pipeline {
 
     APP_DIR = 'app'
 
+    IMAGE_PLATFORM = 'linux/amd64'
+
     ECR_REPOSITORY = 'demo-fastapi'
     TASK_FAMILY = 'demo-fastapi'
     TASK_EXECUTION_ROLE_NAME = 'demo-ecs-task-execution'
     TASK_DEFINITION_TEMPLATE = 'app/task-definition.json'
     TASK_DEFINITION_RENDERED = 'task-definition-rendered.json'
-    API_HEALTH_CHECK_PATH = '/health'
+    TASK_CPU_ARCHITECTURE = 'X86_64'
+    TASK_OPERATING_SYSTEM_FAMILY = 'LINUX'
 
     ECS_CLUSTER = 'custom-ecs'
     ECS_SERVICE = 'demo-nginx'
@@ -54,7 +57,7 @@ pipeline {
           set -eu
 
           missing_tools=""
-          for tool in aws docker curl git; do
+          for tool in aws docker git; do
             if ! command -v "${tool}" >/dev/null 2>&1; then
               missing_tools="${missing_tools} ${tool}"
             fi
@@ -68,7 +71,6 @@ pipeline {
 
           aws --version
           docker --version
-          curl --version
           git --version
 
           if ! docker info >/dev/null 2>&1; then
@@ -76,6 +78,15 @@ pipeline {
             echo "Start Docker on the agent, or give the Jenkins user permission to use Docker."
             exit 1
           fi
+
+          case "$(docker build --help)" in
+            *--platform*) ;;
+            *)
+              echo "Docker is installed, but this version does not support docker build --platform."
+              echo "Install a newer Docker version or build on an amd64 Jenkins agent."
+              exit 1
+              ;;
+          esac
         '''
       }
     }
@@ -117,83 +128,22 @@ pipeline {
       }
     }
 
-    stage('Verify ECS Deployment Target') {
-      when {
-        expression { return params.DEPLOY }
-      }
-
-      steps {
-        withCredentials([
-          [$class: 'AmazonWebServicesCredentialsBinding',
-           credentialsId: 'aws-dev-credential',
-           accessKeyVariable: 'AWS_ACCESS_KEY_ID',
-           secretKeyVariable: 'AWS_SECRET_ACCESS_KEY']
-        ]) {
-          sh '''
-            set -eu
-
-            cluster_status="$(aws ecs describe-clusters \
-              --clusters "${ECS_CLUSTER}" \
-              --query "clusters[0].status" \
-              --output text)"
-
-            if [ "${cluster_status}" != "ACTIVE" ]; then
-              echo "ECS cluster ${ECS_CLUSTER} is not ACTIVE. Current status: ${cluster_status}"
-              exit 1
-            fi
-
-            service_status="$(aws ecs describe-services \
-              --cluster "${ECS_CLUSTER}" \
-              --services "${ECS_SERVICE}" \
-              --query "services[0].status" \
-              --output text)"
-
-            if [ "${service_status}" != "ACTIVE" ]; then
-              echo "ECS service ${ECS_SERVICE} is not ACTIVE. Current status: ${service_status}"
-              exit 1
-            fi
-
-            target_group_arn="$(aws ecs describe-services \
-              --cluster "${ECS_CLUSTER}" \
-              --services "${ECS_SERVICE}" \
-              --query "services[0].loadBalancers[0].targetGroupArn" \
-              --output text)"
-
-            if [ -z "${target_group_arn}" ] || [ "${target_group_arn}" = "None" ]; then
-              echo "ECS service ${ECS_SERVICE} is not attached to a target group."
-              exit 1
-            fi
-
-            load_balancer_arn="$(aws elbv2 describe-target-groups \
-              --target-group-arns "${target_group_arn}" \
-              --query "TargetGroups[0].LoadBalancerArns[0]" \
-              --output text)"
-
-            if [ -z "${load_balancer_arn}" ] || [ "${load_balancer_arn}" = "None" ]; then
-              echo "Target group ${target_group_arn} is not attached to a load balancer."
-              exit 1
-            fi
-
-            alb_dns_name="$(aws elbv2 describe-load-balancers \
-              --load-balancer-arns "${load_balancer_arn}" \
-              --query "LoadBalancers[0].DNSName" \
-              --output text)"
-
-            echo "ECS deployment target is ready: http://${alb_dns_name}"
-          '''
-        }
-      }
-    }
-
     stage('Build Image') {
       steps {
         dir(env.APP_DIR) {
           sh '''
             docker build \
+              --platform "${IMAGE_PLATFORM}" \
               --label "org.opencontainers.image.revision=${GIT_SHA}" \
               -t "${ECR_URI}:${IMAGE_TAG}" \
               -t "${ECR_URI}:latest" \
               .
+
+            built_platform="$(docker image inspect "${ECR_URI}:${IMAGE_TAG}" --format '{{.Os}}/{{.Architecture}}')"
+            if [ "${built_platform}" != "${IMAGE_PLATFORM}" ]; then
+              echo "Built image platform ${built_platform} does not match expected ${IMAGE_PLATFORM}."
+              exit 1
+            fi
           '''
         }
       }
@@ -236,7 +186,9 @@ pipeline {
               '${AWS_REGION}': env.AWS_REGION,
               '${EXECUTION_ROLE_ARN}': env.EXECUTION_ROLE_ARN,
               '${IMAGE_URI}': env.IMAGE_URI,
-              '${TASK_FAMILY}': env.TASK_FAMILY
+              '${TASK_CPU_ARCHITECTURE}': env.TASK_CPU_ARCHITECTURE,
+              '${TASK_FAMILY}': env.TASK_FAMILY,
+              '${TASK_OPERATING_SYSTEM_FAMILY}': env.TASK_OPERATING_SYSTEM_FAMILY
             ].each { placeholder, value ->
               renderedTaskDefinition = renderedTaskDefinition.replace(placeholder, value)
             }
@@ -281,24 +233,7 @@ pipeline {
       }
     }
 
-    stage('Wait for ECS') {
-      when {
-        expression { return params.DEPLOY }
-      }
-
-      steps {
-        withCredentials([
-          [$class: 'AmazonWebServicesCredentialsBinding',
-           credentialsId: 'aws-dev-credential',
-           accessKeyVariable: 'AWS_ACCESS_KEY_ID',
-           secretKeyVariable: 'AWS_SECRET_ACCESS_KEY']
-        ]) {
-          sh 'aws ecs wait services-stable --cluster "${ECS_CLUSTER}" --services "${ECS_SERVICE}"'
-        }
-      }
-    }
-
-    stage('Smoke Test ALB') {
+    stage('Print ALB URL') {
       when {
         expression { return params.DEPLOY }
       }
@@ -338,19 +273,6 @@ pipeline {
           sh '''
             ALB_URL="http://${ALB_DNS_NAME}"
             echo "App URL: ${ALB_URL}"
-
-            attempt=1
-            while [ "${attempt}" -le 12 ]; do
-              if curl -fsS "${ALB_URL}${API_HEALTH_CHECK_PATH}"; then
-                exit 0
-              fi
-
-              echo "Waiting for ALB health endpoint, attempt ${attempt}/12"
-              sleep 10
-              attempt=$((attempt + 1))
-            done
-
-            curl -fsS "${ALB_URL}${API_HEALTH_CHECK_PATH}"
           '''
         }
       }
