@@ -122,6 +122,10 @@ resource "aws_ecs_service" "app" {
     container_name   = var.api_name
     container_port   = var.api_port
   }
+
+  lifecycle {
+    ignore_changes = [task_definition]
+  }
 }
 
 resource "aws_security_group" "alb" {

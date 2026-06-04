@@ -1,0 +1,251 @@
+pipeline {
+  agent any
+
+  options {
+    disableConcurrentBuilds()
+    timestamps()
+  }
+
+  parameters {
+    string(
+      name: 'IMAGE_TAG',
+      defaultValue: '',
+      description: 'Optional image tag. Empty uses the Jenkins build number and Git SHA.'
+    )
+    booleanParam(
+      name: 'PUSH_LATEST',
+      defaultValue: true,
+      description: 'Also push the image as latest.'
+    )
+    booleanParam(
+      name: 'DEPLOY',
+      defaultValue: true,
+      description: 'Update the ECS service after pushing the image.'
+    )
+  }
+
+  environment {
+    AWS_REGION = 'us-east-1'
+    AWS_DEFAULT_REGION = 'us-east-1'
+
+    APP_DIR = 'app'
+
+    ECR_REPOSITORY = 'demo-fastapi'
+    TASK_FAMILY = 'demo-fastapi'
+    TASK_EXECUTION_ROLE_NAME = 'demo-ecs-task-execution'
+    TASK_DEFINITION_TEMPLATE = 'app/task-definition.json'
+    TASK_DEFINITION_RENDERED = 'task-definition-rendered.json'
+    API_HEALTH_CHECK_PATH = '/health'
+
+    ECS_CLUSTER = 'custom-ecs'
+    ECS_SERVICE = 'demo-nginx'
+  }
+
+  stages {
+    stage('Checkout') {
+      steps {
+        checkout scm
+      }
+    }
+
+    stage('Resolve Image') {
+      steps {
+        script {
+          env.GIT_SHA = sh(script: 'git rev-parse --short=12 HEAD', returnStdout: true).trim()
+
+          def requestedTag = params.IMAGE_TAG.trim()
+          env.IMAGE_TAG = requestedTag ? requestedTag : "${env.BUILD_NUMBER}-${env.GIT_SHA}"
+        }
+
+        sh 'echo "Deploying image tag: ${IMAGE_TAG}"'
+      }
+    }
+
+    stage('Verify AWS and Login to ECR') {
+      steps {
+        withCredentials([
+          [$class: 'AmazonWebServicesCredentialsBinding',
+           credentialsId: 'aws-dev-credential',
+           accessKeyVariable: 'AWS_ACCESS_KEY_ID',
+           secretKeyVariable: 'AWS_SECRET_ACCESS_KEY']
+        ]) {
+          script {
+            env.ECR_URI = sh(
+              script: 'aws ecr describe-repositories --repository-names "${ECR_REPOSITORY}" --query "repositories[0].repositoryUri" --output text',
+              returnStdout: true
+            ).trim()
+          }
+
+          sh '''
+            set +x
+            aws sts get-caller-identity
+            aws ecr get-login-password --region "${AWS_REGION}" | docker login --username AWS --password-stdin "${ECR_URI%/*}"
+          '''
+        }
+      }
+    }
+
+    stage('Build Image') {
+      steps {
+        dir(env.APP_DIR) {
+          sh '''
+            docker build \
+              --label "org.opencontainers.image.revision=${GIT_SHA}" \
+              -t "${ECR_URI}:${IMAGE_TAG}" \
+              -t "${ECR_URI}:latest" \
+              .
+          '''
+        }
+      }
+    }
+
+    stage('Push Image') {
+      steps {
+        sh '''
+          docker push "${ECR_URI}:${IMAGE_TAG}"
+
+          if [ "${PUSH_LATEST}" = "true" ]; then
+            docker push "${ECR_URI}:latest"
+          fi
+        '''
+      }
+    }
+
+    stage('Register Task Definition') {
+      when {
+        expression { return params.DEPLOY }
+      }
+
+      steps {
+        withCredentials([
+          [$class: 'AmazonWebServicesCredentialsBinding',
+           credentialsId: 'aws-dev-credential',
+           accessKeyVariable: 'AWS_ACCESS_KEY_ID',
+           secretKeyVariable: 'AWS_SECRET_ACCESS_KEY']
+        ]) {
+          script {
+            env.IMAGE_URI = "${env.ECR_URI}:${env.IMAGE_TAG}"
+            env.AWS_ACCOUNT_ID = sh(
+              script: 'aws sts get-caller-identity --query Account --output text',
+              returnStdout: true
+            ).trim()
+            env.EXECUTION_ROLE_ARN = "arn:aws:iam::${env.AWS_ACCOUNT_ID}:role/${env.TASK_EXECUTION_ROLE_NAME}"
+
+            sh '''
+              set -eu
+
+              python3 app/render-task-definition.py \
+                "${TASK_DEFINITION_TEMPLATE}" \
+                "${TASK_DEFINITION_RENDERED}"
+
+              echo "Rendered task definition:"
+              python3 -m json.tool "${TASK_DEFINITION_RENDERED}"
+            '''
+
+            env.NEW_TASK_DEFINITION_ARN = sh(
+              script: 'aws ecs register-task-definition --cli-input-json file://${TASK_DEFINITION_RENDERED} --query "taskDefinition.taskDefinitionArn" --output text',
+              returnStdout: true
+            ).trim()
+          }
+
+          sh 'echo "Registered task definition: ${NEW_TASK_DEFINITION_ARN}"'
+        }
+      }
+    }
+
+    stage('Update ECS Service') {
+      when {
+        expression { return params.DEPLOY }
+      }
+
+      steps {
+        withCredentials([
+          [$class: 'AmazonWebServicesCredentialsBinding',
+           credentialsId: 'aws-dev-credential',
+           accessKeyVariable: 'AWS_ACCESS_KEY_ID',
+           secretKeyVariable: 'AWS_SECRET_ACCESS_KEY']
+        ]) {
+          sh '''
+            aws ecs update-service \
+              --cluster "${ECS_CLUSTER}" \
+              --service "${ECS_SERVICE}" \
+              --task-definition "${NEW_TASK_DEFINITION_ARN}"
+          '''
+        }
+      }
+    }
+
+    stage('Wait for ECS') {
+      when {
+        expression { return params.DEPLOY }
+      }
+
+      steps {
+        withCredentials([
+          [$class: 'AmazonWebServicesCredentialsBinding',
+           credentialsId: 'aws-dev-credential',
+           accessKeyVariable: 'AWS_ACCESS_KEY_ID',
+           secretKeyVariable: 'AWS_SECRET_ACCESS_KEY']
+        ]) {
+          sh 'aws ecs wait services-stable --cluster "${ECS_CLUSTER}" --services "${ECS_SERVICE}"'
+        }
+      }
+    }
+
+    stage('Smoke Test ALB') {
+      when {
+        expression { return params.DEPLOY }
+      }
+
+      steps {
+        withCredentials([
+          [$class: 'AmazonWebServicesCredentialsBinding',
+           credentialsId: 'aws-dev-credential',
+           accessKeyVariable: 'AWS_ACCESS_KEY_ID',
+           secretKeyVariable: 'AWS_SECRET_ACCESS_KEY']
+        ]) {
+          script {
+            env.ALB_DNS_NAME = sh(
+              script: '''
+                set -eu
+
+                TARGET_GROUP_ARN="$(aws ecs describe-services \
+                  --cluster "${ECS_CLUSTER}" \
+                  --services "${ECS_SERVICE}" \
+                  --query "services[0].loadBalancers[0].targetGroupArn" \
+                  --output text)"
+
+                LOAD_BALANCER_ARN="$(aws elbv2 describe-target-groups \
+                  --target-group-arns "${TARGET_GROUP_ARN}" \
+                  --query "TargetGroups[0].LoadBalancerArns[0]" \
+                  --output text)"
+
+                aws elbv2 describe-load-balancers \
+                  --load-balancer-arns "${LOAD_BALANCER_ARN}" \
+                  --query "LoadBalancers[0].DNSName" \
+                  --output text
+              ''',
+              returnStdout: true
+            ).trim()
+          }
+
+          sh '''
+            ALB_URL="http://${ALB_DNS_NAME}"
+            echo "App URL: ${ALB_URL}"
+
+            for attempt in $(seq 1 12); do
+              if curl -fsS "${ALB_URL}${API_HEALTH_CHECK_PATH}"; then
+                exit 0
+              fi
+
+              echo "Waiting for ALB health endpoint, attempt ${attempt}/12"
+              sleep 10
+            done
+
+            curl -fsS "${ALB_URL}${API_HEALTH_CHECK_PATH}"
+          '''
+        }
+      }
+    }
+  }
+}
