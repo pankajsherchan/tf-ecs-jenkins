@@ -6,7 +6,7 @@ app = FastAPI()
 @app.get("/")
 def read_root():
     return {
-        "message": "Hello from FastAPI on ECS",
+        "message": "Hello from FastAPI Updated on ECS",
         "status": "ok",
     }
 
