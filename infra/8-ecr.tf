@@ -1,5 +1,5 @@
-resource "aws_ecr_repository" "fastapi" {
-  name                 = "${local.ecs_name}-fastapi"
+resource "aws_ecr_repository" "app" {
+  name                 = "${local.name_prefix}-${var.app_name}"
   image_tag_mutability = "MUTABLE"
 
   image_scanning_configuration {
@@ -7,6 +7,11 @@ resource "aws_ecr_repository" "fastapi" {
   }
 
   tags = {
-    Name = "${local.ecs_name}-fastapi"
+    Name = "${local.name_prefix}-${var.app_name}"
   }
+}
+
+moved {
+  from = aws_ecr_repository.fastapi
+  to   = aws_ecr_repository.app
 }

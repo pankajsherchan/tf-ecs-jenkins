@@ -13,7 +13,7 @@
   "memory": "512",
   "containerDefinitions": [
     {
-      "name": "fastapi",
+      "name": "${APP_NAME}",
       "image": "${IMAGE_URI}",
       "essential": true,
       "portMappings": [
@@ -26,9 +26,9 @@
       "logConfiguration": {
         "logDriver": "awslogs",
         "options": {
-          "awslogs-group": "/ecs/demo",
+          "awslogs-group": "${LOG_GROUP_NAME}",
           "awslogs-region": "${AWS_REGION}",
-          "awslogs-stream-prefix": "fastapi"
+          "awslogs-stream-prefix": "${APP_NAME}"
         }
       }
     }

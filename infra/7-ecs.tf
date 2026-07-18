@@ -1,18 +1,18 @@
 resource "aws_ecs_cluster" "main" {
-  name = "custom-ecs"
+  name = "${local.name_prefix}-ecs-cluster"
 }
 
 resource "aws_cloudwatch_log_group" "ecs" {
-  name              = "/ecs/${local.ecs_name}"
+  name              = "/ecs/${local.name_prefix}/${var.app_name}"
   retention_in_days = 7
 
   tags = {
-    Name = "${local.ecs_name}-ecs-logs"
+    Name = "${local.name_prefix}-${var.app_name}-logs"
   }
 }
 
 resource "aws_iam_role" "ecs_task_execution" {
-  name = "${local.ecs_name}-ecs-task-execution"
+  name = "${local.name_prefix}-ecs-task-execution"
 
   assume_role_policy = jsonencode({
     Version = "2012-10-17"
@@ -28,7 +28,7 @@ resource "aws_iam_role" "ecs_task_execution" {
   })
 
   tags = {
-    Name = "${local.ecs_name}-ecs-task-execution"
+    Name = "${local.name_prefix}-ecs-task-execution"
   }
 }
 
@@ -39,7 +39,7 @@ resource "aws_iam_role_policy_attachment" "ecs_task_execution" {
 
 
 resource "aws_ecs_task_definition" "app" {
-  family                   = "${local.ecs_name}-${var.api_name}"
+  family                   = "${local.name_prefix}-${var.app_name}"
   requires_compatibilities = ["FARGATE"]
   network_mode             = "awsvpc"
   cpu                      = 256
@@ -53,14 +53,14 @@ resource "aws_ecs_task_definition" "app" {
 
   container_definitions = jsonencode([
     {
-      name      = var.api_name
-      image     = local.api_image
+      name      = var.app_name
+      image     = local.app_image
       essential = true
 
       portMappings = [
         {
-          containerPort = var.api_port
-          hostPort      = var.api_port
+          containerPort = var.app_port
+          hostPort      = var.app_port
           protocol      = "tcp"
         }
       ]
@@ -70,7 +70,7 @@ resource "aws_ecs_task_definition" "app" {
         options = {
           awslogs-group         = aws_cloudwatch_log_group.ecs.name
           awslogs-region        = local.region
-          awslogs-stream-prefix = var.api_name
+          awslogs-stream-prefix = var.app_name
         }
       }
     }
@@ -78,13 +78,13 @@ resource "aws_ecs_task_definition" "app" {
   ])
 
   tags = {
-    Name = "${local.ecs_name}-${var.api_name}-task"
+    Name = "${local.name_prefix}-${var.app_name}-task"
   }
 
 }
 
 resource "aws_security_group" "ecs_tasks_sg" {
-  name        = "${local.ecs_name}-ecs-tasks"
+  name        = "${local.name_prefix}-ecs-tasks-sg"
   description = "Security group for ECS tasks"
   vpc_id      = aws_vpc.main.id
 
@@ -98,19 +98,19 @@ resource "aws_security_group" "ecs_tasks_sg" {
 
   ingress {
     description     = "Allow HTTP from ALB"
-    from_port       = var.api_port
-    to_port         = var.api_port
+    from_port       = var.app_port
+    to_port         = var.app_port
     protocol        = "tcp"
     security_groups = [aws_security_group.alb.id]
   }
 
   tags = {
-    Name = "${local.ecs_name}-ecs-tasks"
+    Name = "${local.name_prefix}-ecs-tasks-sg"
   }
 }
 
 resource "aws_ecs_service" "app" {
-  name            = "${local.ecs_name}-nginx"
+  name            = "${local.name_prefix}-${var.app_name}-service"
   cluster         = aws_ecs_cluster.main.id
   task_definition = aws_ecs_task_definition.app.arn
   # The ECR repository is empty during the first infrastructure apply. Keep
@@ -126,8 +126,8 @@ resource "aws_ecs_service" "app" {
 
   load_balancer {
     target_group_arn = aws_lb_target_group.app.arn
-    container_name   = var.api_name
-    container_port   = var.api_port
+    container_name   = var.app_name
+    container_port   = var.app_port
   }
 
   lifecycle {
@@ -138,7 +138,7 @@ resource "aws_ecs_service" "app" {
 }
 
 resource "aws_security_group" "alb" {
-  name        = "${local.ecs_name}-alb"
+  name        = "${local.name_prefix}-alb-sg"
   description = "Security group for the application load balancer"
   vpc_id      = aws_vpc.main.id
 
@@ -159,12 +159,12 @@ resource "aws_security_group" "alb" {
   }
 
   tags = {
-    Name = "${local.ecs_name}-alb"
+    Name = "${local.name_prefix}-alb-sg"
   }
 }
 
 resource "aws_lb" "main" {
-  name               = "${local.ecs_name}-alb"
+  name               = "${local.name_prefix}-alb"
   load_balancer_type = "application"
   internal           = false
 
@@ -177,20 +177,20 @@ resource "aws_lb" "main" {
   security_groups = [aws_security_group.alb.id]
 
   tags = {
-    Name = "${local.ecs_name}-alb"
+    Name = "${local.name_prefix}-alb"
   }
 }
 
 
 resource "aws_lb_target_group" "app" {
-  name        = "${local.ecs_name}-nginx-tg"
-  port        = 80
+  name        = "${local.name_prefix}-${var.app_name}-tg"
+  port        = var.app_port
   protocol    = "HTTP"
   vpc_id      = aws_vpc.main.id
   target_type = "ip"
 
   health_check {
-    path                = var.api_health_check_path
+    path                = var.app_health_check_path
     protocol            = "HTTP"
     matcher             = "200-399"
     interval            = 30
@@ -200,7 +200,7 @@ resource "aws_lb_target_group" "app" {
   }
 
   tags = {
-    Name = "${local.ecs_name}-nginx-tg"
+    Name = "${local.name_prefix}-${var.app_name}-tg"
   }
 }
 

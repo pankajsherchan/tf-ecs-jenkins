@@ -7,7 +7,7 @@ resource "aws_route_table" "private" {
   }
 
   tags = {
-    Name = "private"
+    Name = "${local.name_prefix}-private-rt"
   }
 }
 
@@ -20,7 +20,7 @@ resource "aws_route_table" "public" {
   }
 
   tags = {
-    Name = "public"
+    Name = "${local.name_prefix}-public-rt"
   }
 }
 

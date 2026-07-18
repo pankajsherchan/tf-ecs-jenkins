@@ -29,19 +29,16 @@ pipeline {
     AWS_DEFAULT_REGION = 'us-east-1'
 
     APP_DIR = 'app'
+    PROJECT_NAME = 'demo'
+    ENV = 'dev'
+    APP_NAME = 'api'
 
     IMAGE_PLATFORM = 'linux/amd64'
 
-    ECR_REPOSITORY = 'demo-fastapi'
-    TASK_FAMILY = 'demo-fastapi'
-    TASK_EXECUTION_ROLE_NAME = 'demo-ecs-task-execution'
     TASK_DEFINITION_TEMPLATE = 'app/task-definition.json'
     TASK_DEFINITION_RENDERED = 'task-definition-rendered.json'
     TASK_CPU_ARCHITECTURE = 'X86_64'
     TASK_OPERATING_SYSTEM_FAMILY = 'LINUX'
-
-    ECS_CLUSTER = 'custom-ecs'
-    ECS_SERVICE = 'demo-nginx'
   }
 
   stages {
@@ -94,6 +91,14 @@ pipeline {
     stage('Resolve Image') {
       steps {
         script {
+          def namePrefix = "${env.PROJECT_NAME}-${env.ENV}"
+          env.ECR_REPOSITORY = "${namePrefix}-${env.APP_NAME}"
+          env.TASK_FAMILY = "${namePrefix}-${env.APP_NAME}"
+          env.TASK_EXECUTION_ROLE_NAME = "${namePrefix}-ecs-task-execution"
+          env.LOG_GROUP_NAME = "/ecs/${namePrefix}/${env.APP_NAME}"
+          env.ECS_CLUSTER = "${namePrefix}-ecs-cluster"
+          env.ECS_SERVICE = "${namePrefix}-${env.APP_NAME}-service"
+
           env.GIT_SHA = sh(script: 'git rev-parse --short=12 HEAD', returnStdout: true).trim()
 
           def requestedTag = params.IMAGE_TAG.trim()
@@ -183,9 +188,11 @@ pipeline {
 
             def renderedTaskDefinition = readFile(env.TASK_DEFINITION_TEMPLATE)
             [
+              '${APP_NAME}': env.APP_NAME,
               '${AWS_REGION}': env.AWS_REGION,
               '${EXECUTION_ROLE_ARN}': env.EXECUTION_ROLE_ARN,
               '${IMAGE_URI}': env.IMAGE_URI,
+              '${LOG_GROUP_NAME}': env.LOG_GROUP_NAME,
               '${TASK_CPU_ARCHITECTURE}': env.TASK_CPU_ARCHITECTURE,
               '${TASK_FAMILY}': env.TASK_FAMILY,
               '${TASK_OPERATING_SYSTEM_FAMILY}': env.TASK_OPERATING_SYSTEM_FAMILY
