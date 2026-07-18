@@ -81,10 +81,16 @@ pipeline {
     stage('Terraform Init') {
       steps {
         dir(env.TERRAFORM_DIR) {
-          sh '''
-            terraform init -input=false -reconfigure \
-              -backend-config="key=demo_ecs/${AWS_REGION}/terraform.tfstate"
-          '''
+          withCredentials([[$class: 'AmazonWebServicesCredentialsBinding',
+            credentialsId: 'aws-dev-credential',
+            accessKeyVariable: 'AWS_ACCESS_KEY_ID',
+            secretKeyVariable: 'AWS_SECRET_ACCESS_KEY'
+          ]]) {
+            sh '''
+              terraform init -input=false -reconfigure \
+                -backend-config="key=demo_ecs/${AWS_REGION}/terraform.tfstate"
+            '''
+          }
         }
       }
     }
