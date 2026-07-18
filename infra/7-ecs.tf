@@ -132,7 +132,7 @@ resource "aws_ecs_service" "app" {
 
   lifecycle {
     # The app pipeline owns deployments and scales the service to one task
-    # after it has pushed an image that ECS can pull.
+    # after it has pushed the real application image that ECS can pull.
     ignore_changes = [task_definition, desired_count]
   }
 }

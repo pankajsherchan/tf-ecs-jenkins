@@ -81,7 +81,10 @@ pipeline {
     stage('Terraform Init') {
       steps {
         dir(env.TERRAFORM_DIR) {
-          sh 'terraform init -input=false'
+          sh '''
+            terraform init -input=false -reconfigure \
+              -backend-config="key=demo_ecs/${AWS_REGION}/terraform.tfstate"
+          '''
         }
       }
     }
