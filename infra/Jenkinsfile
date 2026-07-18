@@ -87,7 +87,17 @@ pipeline {
             secretKeyVariable: 'AWS_SECRET_ACCESS_KEY'
           ]]) {
             sh '''
-              rm -rf .terraform
+              STALE_TERRAFORM_DIR="$(mktemp -d)"
+
+              if [ -d .terraform ]; then
+                mv .terraform "${STALE_TERRAFORM_DIR}/.terraform"
+              fi
+
+              for stale_state_path in terraform.tfstate terraform.tfstate.backup terraform.tfstate.d; do
+                if [ -e "${stale_state_path}" ]; then
+                  mv "${stale_state_path}" "${STALE_TERRAFORM_DIR}/${stale_state_path}"
+                fi
+              done
 
               terraform init -input=false -reconfigure \
                 -backend-config="key=demo_ecs/${AWS_REGION}/terraform.tfstate"
