@@ -87,6 +87,8 @@ pipeline {
             secretKeyVariable: 'AWS_SECRET_ACCESS_KEY'
           ]]) {
             sh '''
+              rm -rf .terraform
+
               terraform init -input=false -reconfigure \
                 -backend-config="key=demo_ecs/${AWS_REGION}/terraform.tfstate"
             '''
