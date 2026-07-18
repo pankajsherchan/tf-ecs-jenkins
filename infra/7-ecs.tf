@@ -113,8 +113,10 @@ resource "aws_ecs_service" "app" {
   name            = "${local.ecs_name}-nginx"
   cluster         = aws_ecs_cluster.main.id
   task_definition = aws_ecs_task_definition.app.arn
-  desired_count   = 1
-  launch_type     = "FARGATE"
+  # The ECR repository is empty during the first infrastructure apply. Keep
+  # the service at zero tasks until the app pipeline pushes the first image.
+  desired_count = 0
+  launch_type   = "FARGATE"
 
   network_configuration {
     subnets          = [aws_subnet.private_us_east_1a.id, aws_subnet.private_us_east_1b.id]
@@ -129,7 +131,9 @@ resource "aws_ecs_service" "app" {
   }
 
   lifecycle {
-    ignore_changes = [task_definition]
+    # The app pipeline owns deployments and scales the service to one task
+    # after it has pushed an image that ECS can pull.
+    ignore_changes = [task_definition, desired_count]
   }
 }
 

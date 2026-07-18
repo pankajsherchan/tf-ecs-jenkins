@@ -227,7 +227,8 @@ pipeline {
             aws ecs update-service \
               --cluster "${ECS_CLUSTER}" \
               --service "${ECS_SERVICE}" \
-              --task-definition "${NEW_TASK_DEFINITION_ARN}"
+              --task-definition "${NEW_TASK_DEFINITION_ARN}" \
+              --desired-count 1
           '''
         }
       }

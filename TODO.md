@@ -20,6 +20,7 @@ Goal: build up from a tiny ECS deployment to a production-shaped service, learni
 
 - [x] Create the basic Terraform file structure.
 - [x] Configure the AWS provider.
+- [ ] Add remote Terraform state for reliable local and Jenkins runs.
 - [ ] Add variables for project name and region.
 - [ ] Add common tags.
 - [x] Run `terraform init`.
@@ -66,6 +67,7 @@ Goal: build up from a tiny ECS deployment to a production-shaped service, learni
 - [x] Build the Docker image.
 - [x] Create an ECR repository.
 - [x] Push the image to ECR.
+- [x] Bootstrap the ECS service at zero tasks until the first app image is pushed.
 - [ ] Update ECS task definition to use the ECR image.
 - [ ] Redeploy and test.
 
